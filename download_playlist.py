@@ -10,6 +10,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 import csv
 import argparse
+import sys
 
 error_log_filename = "unavailable_videos.csv"
 success_log_filename = "successful_downloads.csv"
@@ -29,8 +30,11 @@ def read_successful_downloads(filename):
 successful_links = read_successful_downloads(success_log_filename)
 
 def write_to_csv(filename, video_title, video_link):
-    with open(filename, 'a', newline='', encoding='utf-8') as file:
+    mode = 'a' if filename == success_log_filename else 'w'
+    with open(filename, mode, newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
+        if mode == 'w':
+            writer.writerow(["Video Title", "Video Link"])
         writer.writerow([video_title, video_link])
 
 def get_video_id(url):
@@ -130,8 +134,8 @@ def download_video(url, output_path):
             return False
 
 def main():
-    parser = argparse.ArgumentParser(description="Download videos from a Musi playlist.")
-    parser.add_argument("playlist_url", help="URL of the Musi playlist")
+    parser = argparse.ArgumentParser(description="Download videos from a Musi playlist or retry unavailable videos.")
+    parser.add_argument("playlist_url", nargs='?', help="URL of the Musi playlist")
     parser.add_argument("-o", "--output", help="Output directory (default: ~/Downloads/YouTubeVideos)",
                         default=os.path.join(os.path.expanduser("~"), "Downloads", "YouTubeVideos"))
     args = parser.parse_args()
@@ -140,9 +144,22 @@ def main():
     output_path = args.output
     
     os.makedirs(output_path, exist_ok=True)
-    
-    print(f"Fetching tracks from playlist: {args.playlist_url}")
-    track_links = get_track_links(args.playlist_url)
+
+    if args.playlist_url:
+        print(f"Fetching tracks from playlist: {args.playlist_url}")
+        track_links = get_track_links(args.playlist_url)
+    else:
+        if os.path.exists(error_log_filename) and os.path.getsize(error_log_filename) > 0:
+            with open(error_log_filename, 'r', newline='', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header
+                track_links = [row[1] for row in reader if len(row) > 1]
+            print(f"Retrying {len(track_links)} unavailable videos from {error_log_filename}")
+            # Clear the unavailable_videos.csv file
+            open(error_log_filename, 'w').close()
+        else:
+            print("No playlist URL provided and no unavailable videos to retry.")
+            sys.exit(1)
     
     if not track_links:
         print("No tracks found or error accessing the playlist.")
@@ -157,3 +174,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
